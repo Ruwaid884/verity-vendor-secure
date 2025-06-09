@@ -47,8 +47,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (error) throw error;
       setProfile(data);
+      
+      // If user doesn't have a company, create one for admins or assign to existing for others
+      if (!data.company_id && data.role === 'admin') {
+        await createCompanyForAdmin(userId, data.full_name);
+      }
     } catch (error) {
       console.error('Error fetching profile:', error);
+    }
+  };
+
+  const createCompanyForAdmin = async (userId: string, fullName: string) => {
+    try {
+      const companyName = `${fullName}'s Company`;
+      
+      const { data: company, error: companyError } = await supabase
+        .from('companies')
+        .insert([{
+          name: companyName,
+          admin_user_id: userId
+        }])
+        .select()
+        .single();
+
+      if (companyError) throw companyError;
+
+      // Update user profile with company_id
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ company_id: company.id })
+        .eq('id', userId);
+
+      if (profileError) throw profileError;
+
+      // Refetch profile to get updated data
+      await fetchProfile(userId);
+    } catch (error) {
+      console.error('Error creating company for admin:', error);
     }
   };
 

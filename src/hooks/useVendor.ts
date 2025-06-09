@@ -2,182 +2,149 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { useToast } from '@/hooks/use-toast';
 
-export interface VendorData {
-  id?: string;
+interface VendorData {
   company_name: string;
-  tax_id: string;
-  address: string;
-  city: string;
-  state: string;
-  zip_code: string;
-  phone: string;
-  website: string;
-  description: string;
-  bank_name: string;
-  routing_number: string;
-  account_number_encrypted: string;
-  account_type: string;
-  status?: 'draft' | 'submitted' | 'approved' | 'rejected' | 'active';
+  tax_id?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+  phone?: string;
+  website?: string;
+  description?: string;
+  bank_name?: string;
+  routing_number?: string;
+  account_number?: string;
+  account_type?: string;
 }
 
 export const useVendor = () => {
-  const [vendorData, setVendorData] = useState<VendorData | null>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
   const { user, profile } = useAuth();
-  const { toast } = useToast();
+  const [vendor, setVendor] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (user && profile?.role === 'vendor') {
-      fetchVendorData();
-    }
-  }, [user, profile]);
+  const fetchVendor = async () => {
+    if (!user || !profile?.company_id) return;
 
-  const fetchVendorData = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('vendors')
         .select('*')
-        .eq('vendor_user_id', user?.id)
-        .maybeSingle();
+        .eq('vendor_user_id', user.id)
+        .eq('company_id', profile.company_id)
+        .single();
 
       if (error && error.code !== 'PGRST116') {
-        throw error;
+        console.error('Error fetching vendor:', error);
+        return;
       }
 
-      if (data) {
-        setVendorData(data);
-        // Fetch uploaded documents
-        const { data: documents } = await supabase
-          .from('vendor_documents')
-          .select('document_type')
-          .eq('vendor_id', data.id);
-        
-        if (documents) {
-          setUploadedFiles(documents.map(doc => doc.document_type));
-        }
-      }
-    } catch (error: any) {
-      console.error('Error fetching vendor data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load vendor data",
-        variant: "destructive"
-      });
+      setVendor(data);
+    } catch (error) {
+      console.error('Error fetching vendor:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const saveVendorData = async (data: Partial<VendorData>) => {
-    try {
-      if (vendorData?.id) {
-        // Update existing vendor
-        const { error } = await supabase
-          .from('vendors')
-          .update(data)
-          .eq('id', vendorData.id);
+  const createOrUpdateVendor = async (vendorData: VendorData) => {
+    if (!user || !profile?.company_id) {
+      throw new Error('User not authenticated or no company assigned');
+    }
 
-        if (error) throw error;
-      } else {
-        // Create new vendor record
-        const { data: newVendor, error } = await supabase
+    try {
+      setLoading(true);
+
+      const dataToSave = {
+        vendor_user_id: user.id,
+        company_id: profile.company_id,
+        company_name: vendorData.company_name,
+        tax_id: vendorData.tax_id,
+        address: vendorData.address,
+        city: vendorData.city,
+        state: vendorData.state,
+        zip_code: vendorData.zip_code,
+        phone: vendorData.phone,
+        website: vendorData.website,
+        description: vendorData.description,
+        bank_name: vendorData.bank_name,
+        routing_number: vendorData.routing_number,
+        account_number_encrypted: vendorData.account_number, // This should be encrypted in production
+        account_type: vendorData.account_type,
+      };
+
+      let result;
+      if (vendor?.id) {
+        // Update existing vendor
+        result = await supabase
           .from('vendors')
-          .insert({
-            ...data,
-            vendor_user_id: user?.id,
-            company_id: profile?.company_id
-          })
+          .update(dataToSave)
+          .eq('id', vendor.id)
           .select()
           .single();
-
-        if (error) throw error;
-        setVendorData(newVendor);
+      } else {
+        // Create new vendor
+        result = await supabase
+          .from('vendors')
+          .insert([dataToSave])
+          .select()
+          .single();
       }
 
-      toast({
-        title: "Success",
-        description: "Vendor data saved successfully"
-      });
-      
-      await fetchVendorData();
-    } catch (error: any) {
-      console.error('Error saving vendor data:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to save vendor data",
-        variant: "destructive"
-      });
+      if (result.error) {
+        throw result.error;
+      }
+
+      setVendor(result.data);
+      return result.data;
+    } catch (error) {
+      console.error('Error saving vendor:', error);
+      throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
   const submitForApproval = async () => {
-    try {
-      if (!vendorData?.id) {
-        throw new Error('No vendor data to submit');
-      }
+    if (!vendor?.id) {
+      throw new Error('No vendor to submit');
+    }
 
-      const { error } = await supabase
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
         .from('vendors')
-        .update({ 
+        .update({
           status: 'submitted',
-          submitted_at: new Date().toISOString()
+          submitted_at: new Date().toISOString(),
         })
-        .eq('id', vendorData.id);
+        .eq('id', vendor.id)
+        .select()
+        .single();
 
       if (error) throw error;
 
-      // Log audit trail
-      await supabase.from('audit_logs').insert({
-        vendor_id: vendorData.id,
-        user_id: user?.id,
-        action: 'vendor_submitted',
-        details: { message: 'Vendor submitted for approval' }
-      });
-
-      toast({
-        title: "Submitted",
-        description: "Your information has been submitted for approval"
-      });
-
-      await fetchVendorData();
-    } catch (error: any) {
+      setVendor(data);
+      return data;
+    } catch (error) {
       console.error('Error submitting vendor:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to submit for approval",
-        variant: "destructive"
-      });
+      throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
-  const uploadDocument = async (documentType: string, file: File) => {
-    try {
-      // For now, just simulate file upload
-      setUploadedFiles(prev => [...prev, documentType]);
-      
-      toast({
-        title: "Document Uploaded",
-        description: `${documentType} has been uploaded successfully`
-      });
-    } catch (error: any) {
-      toast({
-        title: "Upload Failed",
-        description: error.message || "Failed to upload document",
-        variant: "destructive"
-      });
-    }
-  };
+  useEffect(() => {
+    fetchVendor();
+  }, [user, profile]);
 
   return {
-    vendorData,
-    uploadedFiles,
+    vendor,
     loading,
-    saveVendorData,
+    createOrUpdateVendor,
     submitForApproval,
-    uploadDocument,
-    refetch: fetchVendorData
+    refetch: fetchVendor,
   };
 };

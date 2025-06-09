@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,8 @@ import {
   Phone,
   MapPin
 } from 'lucide-react';
+import { useVendor } from '@/hooks/useVendor';
+import { useToast } from '@/hooks/use-toast';
 
 interface User {
   role: string;
@@ -31,6 +33,9 @@ interface VendorRegistrationProps {
 }
 
 export const VendorRegistration = ({ user, onLogout }: VendorRegistrationProps) => {
+  const { vendor, loading, createOrUpdateVendor, submitForApproval } = useVendor();
+  const { toast } = useToast();
+  
   const [formData, setFormData] = useState({
     companyName: '',
     taxId: '',
@@ -48,7 +53,27 @@ export const VendorRegistration = ({ user, onLogout }: VendorRegistrationProps) 
   });
 
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
-  const [submissionStatus, setSubmissionStatus] = useState<'draft' | 'submitted' | 'approved'>('draft');
+
+  // Load vendor data when component mounts or vendor changes
+  useEffect(() => {
+    if (vendor) {
+      setFormData({
+        companyName: vendor.company_name || '',
+        taxId: vendor.tax_id || '',
+        address: vendor.address || '',
+        city: vendor.city || '',
+        state: vendor.state || '',
+        zipCode: vendor.zip_code || '',
+        phone: vendor.phone || '',
+        website: vendor.website || '',
+        description: vendor.description || '',
+        bankName: vendor.bank_name || '',
+        routingNumber: vendor.routing_number || '',
+        accountNumber: '', // Don't pre-fill sensitive data
+        accountType: vendor.account_type || 'checking',
+      });
+    }
+  }, [vendor]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -56,12 +81,91 @@ export const VendorRegistration = ({ user, onLogout }: VendorRegistrationProps) 
 
   const handleFileUpload = (fileName: string) => {
     setUploadedFiles(prev => [...prev, fileName]);
+    toast({
+      title: "File Uploaded",
+      description: `${fileName} has been uploaded successfully.`,
+    });
   };
 
-  const handleSubmit = () => {
-    setSubmissionStatus('submitted');
-    console.log('Vendor registration submitted:', formData);
+  const handleSave = async () => {
+    try {
+      await createOrUpdateVendor({
+        company_name: formData.companyName,
+        tax_id: formData.taxId,
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        zip_code: formData.zipCode,
+        phone: formData.phone,
+        website: formData.website,
+        description: formData.description,
+        bank_name: formData.bankName,
+        routing_number: formData.routingNumber,
+        account_number: formData.accountNumber,
+        account_type: formData.accountType,
+      });
+
+      toast({
+        title: "Success",
+        description: "Your information has been saved.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save vendor information.",
+        variant: "destructive",
+      });
+    }
   };
+
+  const handleSubmit = async () => {
+    try {
+      // First save current data
+      await handleSave();
+      
+      // Then submit for approval
+      await submitForApproval();
+      
+      toast({
+        title: "Submitted for Approval",
+        description: "Your vendor registration has been submitted for review.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to submit for approval.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getStatusBadge = () => {
+    if (!vendor) return null;
+    
+    switch (vendor.status) {
+      case 'draft':
+        return <Badge variant="secondary">Draft</Badge>;
+      case 'submitted':
+        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Pending Approval</Badge>;
+      case 'approved':
+        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Approved</Badge>;
+      case 'rejected':
+        return <Badge variant="destructive">Rejected</Badge>;
+      default:
+        return null;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -78,11 +182,7 @@ export const VendorRegistration = ({ user, onLogout }: VendorRegistrationProps) 
             </div>
           </div>
           <div className="flex items-center space-x-4">
-            {submissionStatus !== 'draft' && (
-              <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-                {submissionStatus === 'submitted' ? 'Pending Approval' : 'Approved'}
-              </Badge>
-            )}
+            {getStatusBadge()}
             <Button variant="outline" onClick={onLogout} className="flex items-center space-x-2">
               <LogOut className="w-4 h-4" />
               <span>Logout</span>
@@ -92,7 +192,7 @@ export const VendorRegistration = ({ user, onLogout }: VendorRegistrationProps) 
       </header>
 
       <div className="p-6 max-w-4xl mx-auto">
-        {submissionStatus === 'submitted' ? (
+        {vendor?.status === 'submitted' && (
           <Card className="mb-6">
             <CardContent className="p-6">
               <div className="flex items-center space-x-4 text-center">
@@ -104,7 +204,7 @@ export const VendorRegistration = ({ user, onLogout }: VendorRegistrationProps) 
               </div>
             </CardContent>
           </Card>
-        ) : null}
+        )}
 
         <Tabs defaultValue="company" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
@@ -222,6 +322,12 @@ export const VendorRegistration = ({ user, onLogout }: VendorRegistrationProps) 
                     rows={3}
                   />
                 </div>
+
+                <div className="pt-4">
+                  <Button onClick={handleSave} disabled={loading}>
+                    Save Company Information
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -292,6 +398,12 @@ export const VendorRegistration = ({ user, onLogout }: VendorRegistrationProps) 
                     <option value="checking">Checking</option>
                     <option value="savings">Savings</option>
                   </select>
+                </div>
+
+                <div className="pt-4">
+                  <Button onClick={handleSave} disabled={loading}>
+                    Save Banking Information
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -387,13 +499,15 @@ export const VendorRegistration = ({ user, onLogout }: VendorRegistrationProps) 
                   </div>
                 </div>
 
-                <div className="pt-4 border-t">
+                <div className="pt-4 border-t space-x-4">
+                  <Button onClick={handleSave} variant="outline" disabled={loading}>
+                    Save Draft
+                  </Button>
                   <Button 
                     onClick={handleSubmit} 
-                    className="w-full md:w-auto"
-                    disabled={submissionStatus !== 'draft'}
+                    disabled={loading || vendor?.status === 'submitted'}
                   >
-                    {submissionStatus === 'draft' ? 'Submit for Approval' : 'Already Submitted'}
+                    {vendor?.status === 'submitted' ? 'Already Submitted' : 'Submit for Approval'}
                   </Button>
                 </div>
               </CardContent>

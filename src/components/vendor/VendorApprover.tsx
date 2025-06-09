@@ -17,6 +17,8 @@ import {
   Clock,
   Eye
 } from 'lucide-react';
+import { useApprover } from '@/hooks/useApprover';
+import { useToast } from '@/hooks/use-toast';
 
 interface User {
   role: string;
@@ -29,73 +31,43 @@ interface VendorApproverProps {
 }
 
 export const VendorApprover = ({ user, onLogout }: VendorApproverProps) => {
+  const { pendingVendors, loading, approveVendor, rejectVendor } = useApprover();
+  const { toast } = useToast();
   const [selectedVendor, setSelectedVendor] = useState<number | null>(null);
   const [comments, setComments] = useState('');
 
-  // Mock data - in real app this would come from API
-  const pendingVendors = [
-    {
-      id: 1,
-      companyName: 'TechCorp Solutions',
-      submittedDate: '2024-06-08',
-      submittedBy: 'john.doe@techcorp.com',
-      companyInfo: {
-        taxId: '12-3456789',
-        address: '123 Tech Street, San Francisco, CA 94105',
-        phone: '(555) 123-4567',
-        website: 'https://techcorp.com',
-        description: 'Full-service technology consulting and software development company.'
-      },
-      bankingInfo: {
-        bankName: 'First National Bank',
-        accountType: 'Checking',
-        routingNumber: '****6789',
-        accountNumber: '****4321'
-      },
-      documents: [
-        { name: 'W-9 Tax Form', status: 'uploaded', verificationStatus: 'verified' },
-        { name: 'Certificate of Insurance', status: 'uploaded', verificationStatus: 'verified' },
-        { name: 'Bank Verification Letter', status: 'uploaded', verificationStatus: 'pending' },
-      ],
-      riskScore: 'Low',
-      status: 'pending_review'
-    },
-    {
-      id: 2,
-      companyName: 'Global Services Inc',
-      submittedDate: '2024-06-07',
-      submittedBy: 'admin@globalservices.com',
-      companyInfo: {
-        taxId: '98-7654321',
-        address: '456 Business Ave, New York, NY 10001',
-        phone: '(555) 987-6543',
-        website: 'https://globalservices.com',
-        description: 'International business consulting and logistics services.'
-      },
-      bankingInfo: {
-        bankName: 'Chase Bank',
-        accountType: 'Business Checking',
-        routingNumber: '****1234',
-        accountNumber: '****9876'
-      },
-      documents: [
-        { name: 'W-9 Tax Form', status: 'uploaded', verificationStatus: 'verified' },
-        { name: 'Certificate of Insurance', status: 'uploaded', verificationStatus: 'flagged' },
-        { name: 'Bank Verification Letter', status: 'uploaded', verificationStatus: 'verified' },
-      ],
-      riskScore: 'Medium',
-      status: 'pending_review'
+  const handleApprove = async (vendorId: string) => {
+    try {
+      await approveVendor(vendorId, comments);
+      toast({
+        title: "Vendor Approved",
+        description: "The vendor has been successfully approved.",
+      });
+      setComments('');
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to approve vendor.",
+        variant: "destructive",
+      });
     }
-  ];
-
-  const handleApprove = (vendorId: number) => {
-    console.log('Approving vendor:', vendorId, 'Comments:', comments);
-    // Here you would typically send an API request
   };
 
-  const handleReject = (vendorId: number) => {
-    console.log('Rejecting vendor:', vendorId, 'Comments:', comments);
-    // Here you would typically send an API request
+  const handleReject = async (vendorId: string) => {
+    try {
+      await rejectVendor(vendorId, comments);
+      toast({
+        title: "Vendor Rejected",
+        description: "The vendor has been rejected.",
+      });
+      setComments('');
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject vendor.",
+        variant: "destructive",
+      });
+    }
   };
 
   const getVerificationBadge = (status: string) => {
@@ -123,6 +95,17 @@ export const VendorApprover = ({ user, onLogout }: VendorApproverProps) => {
         return <Badge variant="secondary">Unknown</Badge>;
     }
   };
+
+  if (loading && pendingVendors.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -166,29 +149,40 @@ export const VendorApprover = ({ user, onLogout }: VendorApproverProps) => {
               </CardHeader>
               <CardContent className="p-0">
                 <div className="space-y-0">
-                  {pendingVendors.map((vendor) => (
-                    <div
-                      key={vendor.id}
-                      className={`p-4 border-b cursor-pointer hover:bg-slate-50 transition-colors ${
-                        selectedVendor === vendor.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
-                      }`}
-                      onClick={() => setSelectedVendor(vendor.id)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-medium text-slate-900">{vendor.companyName}</h4>
-                          <p className="text-sm text-slate-600">{vendor.submittedDate}</p>
-                        </div>
-                        <div className="flex flex-col items-end space-y-2">
-                          {getRiskBadge(vendor.riskScore)}
-                          <div className="flex items-center space-x-1">
-                            <FileText className="h-3 w-3 text-slate-400" />
-                            <span className="text-xs text-slate-500">{vendor.documents.length} docs</span>
+                  {pendingVendors.length === 0 ? (
+                    <div className="p-8 text-center text-slate-500">
+                      No vendors pending approval
+                    </div>
+                  ) : (
+                    pendingVendors.map((vendor, index) => (
+                      <div
+                        key={vendor.id}
+                        className={`p-4 border-b cursor-pointer hover:bg-slate-50 transition-colors ${
+                          selectedVendor === index ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
+                        }`}
+                        onClick={() => setSelectedVendor(index)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-medium text-slate-900">{vendor.company_name}</h4>
+                            <p className="text-sm text-slate-600">
+                              {vendor.vendor_user?.full_name || 'Unknown User'}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {vendor.submitted_at ? new Date(vendor.submitted_at).toLocaleDateString() : 'No date'}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end space-y-2">
+                            {getRiskBadge('Low')}
+                            <div className="flex items-center space-x-1">
+                              <FileText className="h-3 w-3 text-slate-400" />
+                              <span className="text-xs text-slate-500">{vendor.documents?.length || 0} docs</span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -196,11 +190,9 @@ export const VendorApprover = ({ user, onLogout }: VendorApproverProps) => {
 
           {/* Vendor Details */}
           <div className="lg:col-span-2">
-            {selectedVendor ? (
+            {selectedVendor !== null && pendingVendors[selectedVendor] ? (
               (() => {
-                const vendor = pendingVendors.find(v => v.id === selectedVendor);
-                if (!vendor) return null;
-
+                const vendor = pendingVendors[selectedVendor];
                 return (
                   <Tabs defaultValue="overview" className="space-y-6">
                     <TabsList className="grid w-full grid-cols-4">
@@ -214,11 +206,13 @@ export const VendorApprover = ({ user, onLogout }: VendorApproverProps) => {
                       <Card>
                         <CardHeader>
                           <CardTitle className="flex items-center justify-between">
-                            <span>{vendor.companyName}</span>
-                            {getRiskBadge(vendor.riskScore)}
+                            <span>{vendor.company_name}</span>
+                            {getRiskBadge('Low')}
                           </CardTitle>
                           <CardDescription>
-                            Submitted by {vendor.submittedBy} on {vendor.submittedDate}
+                            Submitted by {vendor.vendor_user?.email || 'Unknown'} on {
+                              vendor.submitted_at ? new Date(vendor.submitted_at).toLocaleDateString() : 'Unknown date'
+                            }
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
@@ -226,28 +220,32 @@ export const VendorApprover = ({ user, onLogout }: VendorApproverProps) => {
                             <div className="bg-slate-50 p-4 rounded-lg">
                               <h4 className="font-medium text-slate-900 mb-2">Company Info</h4>
                               <div className="space-y-1 text-sm">
-                                <p><span className="font-medium">Tax ID:</span> {vendor.companyInfo.taxId}</p>
-                                <p><span className="font-medium">Phone:</span> {vendor.companyInfo.phone}</p>
+                                <p><span className="font-medium">Tax ID:</span> {vendor.tax_id || 'Not provided'}</p>
+                                <p><span className="font-medium">Phone:</span> {vendor.phone || 'Not provided'}</p>
                               </div>
                             </div>
                             
                             <div className="bg-slate-50 p-4 rounded-lg">
                               <h4 className="font-medium text-slate-900 mb-2">Banking</h4>
                               <div className="space-y-1 text-sm">
-                                <p><span className="font-medium">Bank:</span> {vendor.bankingInfo.bankName}</p>
-                                <p><span className="font-medium">Type:</span> {vendor.bankingInfo.accountType}</p>
+                                <p><span className="font-medium">Bank:</span> {vendor.bank_name || 'Not provided'}</p>
+                                <p><span className="font-medium">Type:</span> {vendor.account_type || 'Not provided'}</p>
                               </div>
                             </div>
                             
                             <div className="bg-slate-50 p-4 rounded-lg">
                               <h4 className="font-medium text-slate-900 mb-2">Documents</h4>
                               <div className="space-y-1">
-                                {vendor.documents.map((doc) => (
-                                  <div key={doc.name} className="flex items-center space-x-2">
-                                    <CheckCircle className="h-3 w-3 text-green-600" />
-                                    <span className="text-xs">{doc.name}</span>
-                                  </div>
-                                ))}
+                                {vendor.documents?.length > 0 ? (
+                                  vendor.documents.map((doc: any) => (
+                                    <div key={doc.id} className="flex items-center space-x-2">
+                                      <CheckCircle className="h-3 w-3 text-green-600" />
+                                      <span className="text-xs">{doc.file_name}</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs text-slate-500">No documents uploaded</p>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -269,6 +267,7 @@ export const VendorApprover = ({ user, onLogout }: VendorApproverProps) => {
                               <Button 
                                 onClick={() => handleApprove(vendor.id)}
                                 className="bg-green-600 hover:bg-green-700"
+                                disabled={loading}
                               >
                                 <CheckCircle className="w-4 h-4 mr-2" />
                                 Approve Vendor
@@ -276,6 +275,7 @@ export const VendorApprover = ({ user, onLogout }: VendorApproverProps) => {
                               <Button 
                                 variant="destructive"
                                 onClick={() => handleReject(vendor.id)}
+                                disabled={loading}
                               >
                                 <XCircle className="w-4 h-4 mr-2" />
                                 Reject
@@ -298,33 +298,38 @@ export const VendorApprover = ({ user, onLogout }: VendorApproverProps) => {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="text-sm font-medium text-slate-700">Company Name</label>
-                              <p className="text-slate-900">{vendor.companyName}</p>
+                              <p className="text-slate-900">{vendor.company_name}</p>
                             </div>
                             <div>
                               <label className="text-sm font-medium text-slate-700">Tax ID</label>
-                              <p className="text-slate-900">{vendor.companyInfo.taxId}</p>
+                              <p className="text-slate-900">{vendor.tax_id || 'Not provided'}</p>
                             </div>
                           </div>
                           
                           <div>
                             <label className="text-sm font-medium text-slate-700">Address</label>
-                            <p className="text-slate-900">{vendor.companyInfo.address}</p>
+                            <p className="text-slate-900">
+                              {vendor.address && vendor.city && vendor.state ? 
+                                `${vendor.address}, ${vendor.city}, ${vendor.state} ${vendor.zip_code}` : 
+                                'Not provided'
+                              }
+                            </p>
                           </div>
                           
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="text-sm font-medium text-slate-700">Phone</label>
-                              <p className="text-slate-900">{vendor.companyInfo.phone}</p>
+                              <p className="text-slate-900">{vendor.phone || 'Not provided'}</p>
                             </div>
                             <div>
                               <label className="text-sm font-medium text-slate-700">Website</label>
-                              <p className="text-slate-900">{vendor.companyInfo.website}</p>
+                              <p className="text-slate-900">{vendor.website || 'Not provided'}</p>
                             </div>
                           </div>
                           
                           <div>
                             <label className="text-sm font-medium text-slate-700">Business Description</label>
-                            <p className="text-slate-900">{vendor.companyInfo.description}</p>
+                            <p className="text-slate-900">{vendor.description || 'Not provided'}</p>
                           </div>
                         </CardContent>
                       </Card>
@@ -352,22 +357,24 @@ export const VendorApprover = ({ user, onLogout }: VendorApproverProps) => {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="text-sm font-medium text-slate-700">Bank Name</label>
-                              <p className="text-slate-900">{vendor.bankingInfo.bankName}</p>
+                              <p className="text-slate-900">{vendor.bank_name || 'Not provided'}</p>
                             </div>
                             <div>
                               <label className="text-sm font-medium text-slate-700">Account Type</label>
-                              <p className="text-slate-900">{vendor.bankingInfo.accountType}</p>
+                              <p className="text-slate-900">{vendor.account_type || 'Not provided'}</p>
                             </div>
                           </div>
                           
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <label className="text-sm font-medium text-slate-700">Routing Number</label>
-                              <p className="text-slate-900 font-mono">{vendor.bankingInfo.routingNumber}</p>
+                              <p className="text-slate-900 font-mono">
+                                {vendor.routing_number ? '***' + vendor.routing_number.slice(-4) : 'Not provided'}
+                              </p>
                             </div>
                             <div>
                               <label className="text-sm font-medium text-slate-700">Account Number</label>
-                              <p className="text-slate-900 font-mono">{vendor.bankingInfo.accountNumber}</p>
+                              <p className="text-slate-900 font-mono">****</p>
                             </div>
                           </div>
                         </CardContent>
@@ -384,25 +391,31 @@ export const VendorApprover = ({ user, onLogout }: VendorApproverProps) => {
                         </CardHeader>
                         <CardContent>
                           <div className="space-y-4">
-                            {vendor.documents.map((doc) => (
-                              <div key={doc.name} className="border border-slate-200 rounded-lg p-4">
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <h4 className="font-medium text-slate-900">{doc.name}</h4>
-                                    <p className="text-sm text-slate-600">
-                                      Status: {doc.status} • Verification: {doc.verificationStatus}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center space-x-3">
-                                    {getVerificationBadge(doc.verificationStatus)}
-                                    <Button variant="outline" size="sm">
-                                      <Eye className="w-4 h-4 mr-2" />
-                                      View
-                                    </Button>
+                            {vendor.documents?.length > 0 ? (
+                              vendor.documents.map((doc: any) => (
+                                <div key={doc.id} className="border border-slate-200 rounded-lg p-4">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <h4 className="font-medium text-slate-900">{doc.file_name}</h4>
+                                      <p className="text-sm text-slate-600">
+                                        Type: {doc.document_type} • Status: {doc.status}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center space-x-3">
+                                      {getVerificationBadge(doc.status)}
+                                      <Button variant="outline" size="sm">
+                                        <Eye className="w-4 h-4 mr-2" />
+                                        View
+                                      </Button>
+                                    </div>
                                   </div>
                                 </div>
+                              ))
+                            ) : (
+                              <div className="text-center py-8 text-slate-500">
+                                No documents uploaded
                               </div>
-                            ))}
+                            )}
                           </div>
                         </CardContent>
                       </Card>
