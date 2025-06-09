@@ -1,7 +1,17 @@
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { ApiService } from '@/lib/api';
+
+interface User {
+  id: string;
+  email?: string;
+  user_metadata?: any;
+}
+
+interface Session {
+  access_token: string;
+  refresh_token: string;
+  user: User;
+}
 
 interface Profile {
   id: string;
@@ -16,8 +26,8 @@ interface AuthContextType {
   profile: Profile | null;
   session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName: string, role: string) => Promise<{ error: any }>;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, fullName: string, role: string) => Promise<{ error?: any }>;
+  signIn: (email: string, password: string) => Promise<{ error?: any }>;
   signOut: () => Promise<void>;
 }
 
@@ -37,129 +47,130 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
-      if (error) throw error;
-      setProfile(data);
-      
-      // If user doesn't have a company, create one for admins or assign to existing for others
-      if (!data.company_id && data.role === 'admin') {
-        await createCompanyForAdmin(userId, data.full_name);
-      }
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-    }
-  };
+  const apiService = ApiService.getInstance();
 
-  const createCompanyForAdmin = async (userId: string, fullName: string) => {
-    try {
-      const companyName = `${fullName}'s Company`;
-      
-      const { data: company, error: companyError } = await supabase
-        .from('companies')
-        .insert([{
-          name: companyName,
-          admin_user_id: userId
-        }])
-        .select()
-        .single();
-
-      if (companyError) throw companyError;
-
-      // Update user profile with company_id
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ company_id: company.id })
-        .eq('id', userId);
-
-      if (profileError) throw profileError;
-
-      // Refetch profile to get updated data
-      await fetchProfile(userId);
-    } catch (error) {
-      console.error('Error creating company for admin:', error);
-    }
-  };
-
+  // Check for existing session on mount
   useEffect(() => {
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session);
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          setTimeout(() => {
-            fetchProfile(session.user.id);
-          }, 0);
-        } else {
-          setProfile(null);
+    const checkSession = async () => {
+      try {
+        const storedSession = localStorage.getItem('auth_session');
+        if (storedSession) {
+          const sessionData = JSON.parse(storedSession);
+          
+          // Verify the session is still valid by fetching profile
+          const result = await apiService.getProfile(sessionData.access_token);
+          
+          if (result.success) {
+            setSession(sessionData);
+            setUser(result.data.user);
+            setProfile(result.data.profile);
+          } else {
+            // Session invalid, clear it
+            localStorage.removeItem('auth_session');
+          }
         }
+      } catch (error) {
+        console.error('Session check failed:', error);
+        localStorage.removeItem('auth_session');
+      } finally {
         setLoading(false);
       }
-    );
+    };
 
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    checkSession();
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string, role: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
-          role: role
-        }
+    try {
+      setLoading(true);
+      const result = await apiService.signup(email, password, fullName, role);
+
+      if (result.success) {
+        const sessionData = {
+          access_token: result.data.session.access_token,
+          refresh_token: result.data.session.refresh_token,
+          user: result.data.user
+        };
+
+        setUser(result.data.user);
+        setProfile(result.data.profile);
+        setSession(sessionData);
+        
+        // Store session in localStorage
+        localStorage.setItem('auth_session', JSON.stringify(sessionData));
+
+        return { error: null };
+      } else {
+        return { error: { message: result.message || 'Signup failed' } };
       }
-    });
-    return { error };
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      return { error: { message: error.message || 'Signup failed' } };
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-    return { error };
+    try {
+      setLoading(true);
+      const result = await apiService.login(email, password);
+
+      if (result.success) {
+        const sessionData = {
+          access_token: result.data.session.access_token,
+          refresh_token: result.data.session.refresh_token,
+          user: result.data.user
+        };
+
+        setUser(result.data.user);
+        setProfile(result.data.profile);
+        setSession(sessionData);
+        
+        // Store session in localStorage
+        localStorage.setItem('auth_session', JSON.stringify(sessionData));
+
+        return { error: null };
+      } else {
+        return { error: { message: result.message || 'Login failed' } };
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      return { error: { message: error.message || 'Login failed' } };
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
-    setSession(null);
+    try {
+      if (session?.access_token) {
+        await apiService.logout(session.access_token);
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      // Clear local state regardless of API call success
+      setUser(null);
+      setProfile(null);
+      setSession(null);
+      localStorage.removeItem('auth_session');
+    }
   };
 
-  const value = {
+  const value: AuthContextType = {
     user,
     profile,
     session,
     loading,
     signUp,
     signIn,
-    signOut
+    signOut,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };

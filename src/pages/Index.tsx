@@ -1,4 +1,3 @@
-
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,7 +6,7 @@ import { VendorRegistration } from '@/components/vendor/VendorRegistration';
 import { VendorApprover } from '@/components/vendor/VendorApprover';
 
 const Index = () => {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, signOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -32,8 +31,14 @@ const Index = () => {
   }
 
   const handleLogout = async () => {
-    // This will be handled by the auth context
-    navigate('/auth');
+    try {
+      await signOut();
+      navigate('/auth');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Still navigate to auth page even if logout fails
+      navigate('/auth');
+    }
   };
 
   const renderDashboard = () => {

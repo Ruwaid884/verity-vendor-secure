@@ -1,9 +1,8 @@
-
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { vendorApi, VendorData, VendorResponse, ApiError } from '@/lib/api';
 
-interface VendorData {
+interface VendorFormData {
   company_name: string;
   tax_id?: string;
   address?: string;
@@ -21,116 +20,136 @@ interface VendorData {
 
 export const useVendor = () => {
   const { user, profile } = useAuth();
-  const [vendor, setVendor] = useState<any>(null);
+  const [vendor, setVendor] = useState<VendorResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchVendor = async () => {
     if (!user || !profile?.company_id) return;
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('vendors')
-        .select('*')
-        .eq('vendor_user_id', user.id)
-        .eq('company_id', profile.company_id)
-        .single();
+      setError(null);
+      
+      // Get vendors for this user and company
+      const response = await vendorApi.getVendors({
+        companyId: profile.company_id,
+        vendorUserId: user.id,
+        limit: 1
+      });
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching vendor:', error);
-        return;
-      }
-
-      setVendor(data);
+      // Get the first vendor if exists
+      const vendorData = response.vendors.length > 0 ? response.vendors[0] : null;
+      setVendor(vendorData);
     } catch (error) {
+      if (error instanceof ApiError) {
+        setError(error.message);
+      } else {
+        setError('Failed to fetch vendor data');
+      }
       console.error('Error fetching vendor:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const createOrUpdateVendor = async (vendorData: VendorData) => {
+  const createOrUpdateVendor = async (vendorData: VendorFormData) => {
     if (!user || !profile?.company_id) {
-      throw new Error('User not authenticated or no company assigned');
+      throw new Error('User not authenticated or missing company ID');
     }
 
     try {
       setLoading(true);
+      setError(null);
 
-      const dataToSave = {
-        vendor_user_id: user.id,
-        company_id: profile.company_id,
-        company_name: vendorData.company_name,
-        tax_id: vendorData.tax_id,
+      // Convert form data to API format
+      const apiData: VendorData = {
+        companyId: profile.company_id,
+        companyName: vendorData.company_name,
+        vendorUserId: user.id,
+        description: vendorData.description,
         address: vendorData.address,
         city: vendorData.city,
         state: vendorData.state,
-        zip_code: vendorData.zip_code,
+        zipCode: vendorData.zip_code,
         phone: vendorData.phone,
         website: vendorData.website,
-        description: vendorData.description,
-        bank_name: vendorData.bank_name,
-        routing_number: vendorData.routing_number,
-        account_number_encrypted: vendorData.account_number, // This should be encrypted in production
-        account_type: vendorData.account_type,
+        taxId: vendorData.tax_id,
+        bankName: vendorData.bank_name,
+        routingNumber: vendorData.routing_number,
+        accountNumber: vendorData.account_number,
+        accountType: vendorData.account_type,
       };
 
-      let result;
-      if (vendor?.id) {
+      let updatedVendor: VendorResponse;
+
+      if (vendor) {
         // Update existing vendor
-        result = await supabase
-          .from('vendors')
-          .update(dataToSave)
-          .eq('id', vendor.id)
-          .select()
-          .single();
+        updatedVendor = await vendorApi.updateVendor(vendor.id, apiData);
       } else {
         // Create new vendor
-        result = await supabase
-          .from('vendors')
-          .insert([dataToSave])
-          .select()
-          .single();
+        updatedVendor = await vendorApi.createVendor(apiData);
       }
 
-      if (result.error) {
-        throw result.error;
-      }
-
-      setVendor(result.data);
-      return result.data;
+      setVendor(updatedVendor);
+      return updatedVendor;
     } catch (error) {
-      console.error('Error saving vendor:', error);
-      throw error;
+      if (error instanceof ApiError) {
+        setError(error.message);
+        throw new Error(error.message);
+      } else {
+        setError('Failed to save vendor data');
+        throw new Error('Failed to save vendor data');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const submitForApproval = async () => {
-    if (!vendor?.id) {
+    if (!vendor) {
       throw new Error('No vendor to submit');
     }
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('vendors')
-        .update({
-          status: 'submitted',
-          submitted_at: new Date().toISOString(),
-        })
-        .eq('id', vendor.id)
-        .select()
-        .single();
+      setError(null);
 
-      if (error) throw error;
-
-      setVendor(data);
-      return data;
+      const updatedVendor = await vendorApi.submitVendor(vendor.id);
+      setVendor(updatedVendor);
+      return updatedVendor;
     } catch (error) {
-      console.error('Error submitting vendor:', error);
-      throw error;
+      if (error instanceof ApiError) {
+        setError(error.message);
+        throw new Error(error.message);
+      } else {
+        setError('Failed to submit vendor for approval');
+        throw new Error('Failed to submit vendor for approval');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteVendor = async () => {
+    if (!vendor) {
+      throw new Error('No vendor to delete');
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      await vendorApi.deleteVendor(vendor.id);
+      setVendor(null);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setError(error.message);
+        throw new Error(error.message);
+      } else {
+        setError('Failed to delete vendor');
+        throw new Error('Failed to delete vendor');
+      }
     } finally {
       setLoading(false);
     }
@@ -143,8 +162,10 @@ export const useVendor = () => {
   return {
     vendor,
     loading,
+    error,
     createOrUpdateVendor,
     submitForApproval,
+    deleteVendor,
     refetch: fetchVendor,
   };
 };
