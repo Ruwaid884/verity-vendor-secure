@@ -9,7 +9,259 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          details: Json | null
+          id: string
+          user_id: string | null
+          vendor_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          user_id?: string | null
+          vendor_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          user_id?: string | null
+          vendor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_logs_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      companies: {
+        Row: {
+          admin_user_id: string | null
+          created_at: string | null
+          id: string
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          admin_user_id?: string | null
+          created_at?: string | null
+          id?: string
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          admin_user_id?: string | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "companies_admin_user_id_fkey"
+            columns: ["admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          company_id: string | null
+          created_at: string | null
+          email: string
+          full_name: string
+          id: string
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at: string | null
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string | null
+          email: string
+          full_name: string
+          id: string
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string | null
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_profiles_company"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_documents: {
+        Row: {
+          document_type: Database["public"]["Enums"]["document_type"]
+          file_name: string
+          file_url: string | null
+          id: string
+          status: Database["public"]["Enums"]["document_status"] | null
+          uploaded_at: string | null
+          vendor_id: string | null
+          verification_notes: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          document_type: Database["public"]["Enums"]["document_type"]
+          file_name: string
+          file_url?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["document_status"] | null
+          uploaded_at?: string | null
+          vendor_id?: string | null
+          verification_notes?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          document_type?: Database["public"]["Enums"]["document_type"]
+          file_name?: string
+          file_url?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["document_status"] | null
+          uploaded_at?: string | null
+          vendor_id?: string | null
+          verification_notes?: string | null
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_documents_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendors: {
+        Row: {
+          account_number_encrypted: string | null
+          account_type: string | null
+          address: string | null
+          approved_at: string | null
+          approver_user_id: string | null
+          bank_name: string | null
+          city: string | null
+          company_id: string
+          company_name: string
+          created_at: string | null
+          description: string | null
+          id: string
+          phone: string | null
+          routing_number: string | null
+          state: string | null
+          status: Database["public"]["Enums"]["vendor_status"] | null
+          submitted_at: string | null
+          tax_id: string | null
+          updated_at: string | null
+          vendor_user_id: string | null
+          website: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          account_number_encrypted?: string | null
+          account_type?: string | null
+          address?: string | null
+          approved_at?: string | null
+          approver_user_id?: string | null
+          bank_name?: string | null
+          city?: string | null
+          company_id: string
+          company_name: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          phone?: string | null
+          routing_number?: string | null
+          state?: string | null
+          status?: Database["public"]["Enums"]["vendor_status"] | null
+          submitted_at?: string | null
+          tax_id?: string | null
+          updated_at?: string | null
+          vendor_user_id?: string | null
+          website?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          account_number_encrypted?: string | null
+          account_type?: string | null
+          address?: string | null
+          approved_at?: string | null
+          approver_user_id?: string | null
+          bank_name?: string | null
+          city?: string | null
+          company_id?: string
+          company_name?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          phone?: string | null
+          routing_number?: string | null
+          state?: string | null
+          status?: Database["public"]["Enums"]["vendor_status"] | null
+          submitted_at?: string | null
+          tax_id?: string | null
+          updated_at?: string | null
+          vendor_user_id?: string | null
+          website?: string | null
+          zip_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendors_approver_user_id_fkey"
+            columns: ["approver_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendors_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendors_vendor_user_id_fkey"
+            columns: ["vendor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -18,7 +270,14 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      document_status: "pending" | "verified" | "flagged"
+      document_type:
+        | "w9"
+        | "insurance_certificate"
+        | "bank_verification"
+        | "business_license"
+      user_role: "admin" | "vendor" | "approver"
+      vendor_status: "draft" | "submitted" | "approved" | "rejected" | "active"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -133,6 +392,16 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      document_status: ["pending", "verified", "flagged"],
+      document_type: [
+        "w9",
+        "insurance_certificate",
+        "bank_verification",
+        "business_license",
+      ],
+      user_role: ["admin", "vendor", "approver"],
+      vendor_status: ["draft", "submitted", "approved", "rejected", "active"],
+    },
   },
 } as const
